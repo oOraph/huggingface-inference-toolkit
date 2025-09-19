@@ -20,3 +20,4 @@ torch==2.5.1
 torchvision
 torchaudio
 peft==0.15.1
+psutil>=6.0.0

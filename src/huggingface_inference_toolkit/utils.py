@@ -1,6 +1,11 @@
 import importlib.util
+import ipaddress
+import os
 import sys
 from pathlib import Path
+
+import psutil
+from starlette.requests import Request
 
 from huggingface_inference_toolkit.const import HF_DEFAULT_PIPELINE_NAME, HF_MODULE_NAME
 from huggingface_inference_toolkit.logging import logger
@@ -66,7 +71,7 @@ def check_and_register_custom_pipeline_from_directory(model_dir):
             # init custom handler with model_dir
             custom_pipeline = handler.EndpointHandler(model_dir)
         else:
-            logger.info(f"No spec from file location found for module %s, file %s", HF_MODULE_NAME, custom_module)
+            logger.info("No spec from file location found for module %s, file %s", HF_MODULE_NAME, custom_module)
     elif legacy_module.is_file():
         logger.warning(
             """You are using a legacy custom pipeline.
@@ -99,3 +104,63 @@ def convert_params_to_int_or_bool(params):
         if v == "true":
             params[k] = True
     return params
+
+
+def should_discard_left() -> bool:
+    return os.getenv('DISCARD_LEFT', '0').lower() in ['true', 'yes', '1']
+
+
+def already_left(request: Request) -> bool:
+    """
+    Check if the caller has already left without waiting for the answer to come. This can help during burst to relieve
+    the pressure on the worker by cancelling jobs whose results don't matter as they won't be fetched anyway
+    :param request:
+    :return: bool
+    """
+    # NOTE: Starlette method request.is_disconnected is totally broken, consumes the payload, does not return
+    # the correct status. So we use the good old way to identify if the caller is still there.
+    # In any case, if we are not sure, we return False
+    logger.info("Checking if request caller already left")
+    try:
+        client = request.client
+        host = client.host
+        if not host:
+            return False
+
+        port = int(client.port)
+        host = ipaddress.ip_address(host)
+
+        if port <= 0 or port > 65535:
+            logger.warning("Unexpected source port format for caller %s", port)
+            return False
+        counter = 0
+        for connection in psutil.net_connections(kind="tcp"):
+            counter += 1
+            if connection.status != "ESTABLISHED":
+                continue
+            if not connection.raddr:
+                continue
+            if int(connection.raddr.port) != port:
+                continue
+            if (
+                    not connection.raddr.ip
+                    or ipaddress.ip_address(connection.raddr.ip) != host
+            ):
+                continue
+            logger.info(
+                "Found caller connection still established, caller is most likely still there, %s",
+                connection,
+            )
+            return False
+    except Exception as e:
+        logger.warning(
+            "Unexpected error while checking if caller already left, assuming still there"
+        )
+        logger.exception(e)
+        return False
+
+    logger.info(
+        "%d connections checked. No connection found matching to the caller, probably left",
+        counter,
+    )
+    return True
