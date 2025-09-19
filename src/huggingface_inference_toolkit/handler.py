@@ -5,7 +5,12 @@ from typing import Any, Dict, Literal, Optional, Union
 from huggingface_inference_toolkit import logging
 from huggingface_inference_toolkit.const import HF_TRUST_REMOTE_CODE
 from huggingface_inference_toolkit.env_utils import api_inference_compat, ignore_custom_handler
-from huggingface_inference_toolkit.utils import check_and_register_custom_pipeline_from_directory
+from huggingface_inference_toolkit.logging import logger
+from huggingface_inference_toolkit.utils import (
+    already_left,
+    check_and_register_custom_pipeline_from_directory,
+    should_discard_left,
+)
 
 
 class HuggingFaceHandler:
@@ -39,7 +44,17 @@ class HuggingFaceHandler:
         inputs = data.pop("inputs", data)
         parameters = data.pop("parameters", {})
 
-        # diffusers and sentence transformers pipelines do not have the `task` arg
+        if "handler_params" in data:
+            handler_params = data.pop("handler_params")
+            if should_discard_left():
+                request = handler_params.get("request")
+                if not request:
+                    logger.warn("Cannot know if request caller already left, missing request handler param")
+                elif already_left(request):
+                    logger.info("Discarding request as the caller already left")
+                    return None
+
+    # diffusers and sentence transformers pipelines do not have the `task` arg
         if not hasattr(self.pipeline, "task"):
             # sentence transformers parameters not supported yet
             if any(isinstance(self.pipeline, v) for v in SENTENCE_TRANSFORMERS_TASKS.values()):
@@ -168,7 +183,7 @@ class HuggingFaceHandler:
                             scores = resp['scores']
                             if len(labels) == len(scores):
                                 new_resp = []
-                                for label, score in zip(labels, scores):
+                                for label, score in zip(labels, scores, strict=True):
                                     new_resp.append({"label": label, "score": score})
                                 resp = new_resp
                             else:

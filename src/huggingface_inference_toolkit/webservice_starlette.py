@@ -22,12 +22,13 @@ from huggingface_inference_toolkit.const import (
 )
 from huggingface_inference_toolkit.env_utils import api_inference_compat
 from huggingface_inference_toolkit.handler import (
+    HuggingFaceHandler,
     get_inference_handler_either_custom_or_default_handler,
 )
 from huggingface_inference_toolkit.logging import logger
 from huggingface_inference_toolkit.serialization.base import ContentType
 from huggingface_inference_toolkit.serialization.json_utils import Jsoner
-from huggingface_inference_toolkit.utils import convert_params_to_int_or_bool
+from huggingface_inference_toolkit.utils import convert_params_to_int_or_bool, should_discard_left
 from huggingface_inference_toolkit.vertex_ai_utils import _load_repository_from_gcs
 
 INFERENCE_HANDLERS = {}
@@ -101,6 +102,7 @@ async def metrics(request):
 
 async def predict(request):
     global INFERENCE_HANDLERS
+
     if not MODEL_DOWNLOADED:
         with MODEL_DL_LOCK:
             _eager_model_dl()
@@ -154,6 +156,10 @@ async def predict(request):
         # tracks request time
         start_time = perf_counter()
 
+        if should_discard_left() and isinstance(inference_handler, HuggingFaceHandler):
+            deserialized_body['handler_params'] = {
+                'request': request
+            }
         with idle.request_witnesses():
             # run async not blocking call
             pred = await async_handler_call(inference_handler, deserialized_body)
@@ -162,6 +168,10 @@ async def predict(request):
         logger.info(
             f"POST {request.url.path} | Duration: {(perf_counter()-start_time) *1000:.2f} ms"
         )
+
+        if should_discard_left() and pred is None:
+            logger.info("No content returned as caller already left")
+            return Response(status_code=204)
 
         # response extracts content from request
         accept = request.headers.get("accept")
