@@ -38,6 +38,7 @@ class HuggingFaceHandler:
         :return: prediction output
         """
 
+        logger.debug("Calling HF default handler")
         # import as late as possible to reduce the footprint
         from huggingface_inference_toolkit.sentence_transformers_utils import SENTENCE_TRANSFORMERS_TASKS
 
@@ -126,6 +127,7 @@ class HuggingFaceHandler:
             if self.pipeline.task == "token-classification":
                 parameters.setdefault("aggregation_strategy", os.environ.get("DEFAULT_AGGREGATION_STRATEGY", "simple"))
 
+        logger.debug("Performing inference")
         resp = self.pipeline(**inputs, **parameters) if isinstance(inputs, dict) else \
             self.pipeline(inputs, **parameters)
 

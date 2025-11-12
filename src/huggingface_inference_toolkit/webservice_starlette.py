@@ -54,6 +54,7 @@ async def prepare_model_artifacts():
 
 
 def _eager_model_dl():
+    logger.debug("Model download")
     global MODEL_DOWNLOADED
     from huggingface_inference_toolkit.heavy_utils import load_repository_from_hf
     # 1. check if model artifacts available in HF_MODEL_DIR
@@ -81,6 +82,8 @@ def _eager_model_dl():
                     Provided values are:
                     HF_MODEL_DIR: {HF_MODEL_DIR} and HF_MODEL_ID:{HF_MODEL_ID}"""
             )
+    else:
+        logger.debug("Model already downloaded in %s", HF_MODEL_DIR)
     MODEL_DOWNLOADED = True
 
 
@@ -101,95 +104,99 @@ async def metrics(request):
 
 
 async def predict(request):
-    global INFERENCE_HANDLERS
+    with idle.request_witnesses():
+        logger.debug("Received request, scope %s", request.scope)
 
-    if not MODEL_DOWNLOADED:
-        with MODEL_DL_LOCK:
-            _eager_model_dl()
-    try:
-        task = request.path_params.get("task", HF_TASK)
-        # extracts content from request
-        content_type = request.headers.get("content-Type", os.environ.get("DEFAULT_CONTENT_TYPE", "")).lower()
-        # try to deserialize payload
-        deserialized_body = ContentType.get_deserializer(content_type, task).deserialize(
-            await request.body()
-        )
-        # checks if input schema is correct
-        if "inputs" not in deserialized_body and "instances" not in deserialized_body:
-            raise ValueError(
-                f"Body needs to provide a inputs key, received: {orjson.dumps(deserialized_body)}"
+        global INFERENCE_HANDLERS
+
+        if not MODEL_DOWNLOADED:
+            with MODEL_DL_LOCK:
+                await asyncio.to_thread(_eager_model_dl)
+        try:
+            task = request.path_params.get("task", HF_TASK)
+            # extracts content from request
+            content_type = request.headers.get("content-Type", os.environ.get("DEFAULT_CONTENT_TYPE", "")).lower()
+            # try to deserialize payload
+            deserialized_body = ContentType.get_deserializer(content_type, task).deserialize(
+                await request.body()
             )
+            # checks if input schema is correct
+            if "inputs" not in deserialized_body and "instances" not in deserialized_body:
+                raise ValueError(
+                    f"Body needs to provide a inputs key, received: {orjson.dumps(deserialized_body)}"
+                )
 
-        # Decode base64 audio inputs before running inference
-        if "parameters" in deserialized_body and HF_TASK in {
-            "automatic-speech-recognition",
-            "audio-classification",
-        }:
-            # Be more strict on base64 decoding, the provided string should valid base64 encoded data
-            deserialized_body["inputs"] = base64.b64decode(
-                deserialized_body["inputs"], validate=True
-            )
+            # Decode base64 audio inputs before running inference
+            if "parameters" in deserialized_body and HF_TASK in {
+                "automatic-speech-recognition",
+                "audio-classification",
+            }:
+                # Be more strict on base64 decoding, the provided string should valid base64 encoded data
+                deserialized_body["inputs"] = base64.b64decode(
+                    deserialized_body["inputs"], validate=True
+                )
 
-        # check for query parameter and add them to the body
-        if request.query_params and "parameters" not in deserialized_body:
-            deserialized_body["parameters"] = convert_params_to_int_or_bool(
-                dict(request.query_params)
-            )
+            # check for query parameter and add them to the body
+            if request.query_params and "parameters" not in deserialized_body:
+                deserialized_body["parameters"] = convert_params_to_int_or_bool(
+                    dict(request.query_params)
+                )
 
-        # We lazily load pipelines for alt tasks
+            # We lazily load pipelines for alt tasks
 
-        if task == "feature-extraction" and HF_TASK in [
-            "sentence-similarity",
-            "sentence-embeddings",
-            "sentence-ranking",
-        ]:
-            task = "sentence-embeddings"
-        inference_handler = INFERENCE_HANDLERS.get(task)
-        if not inference_handler:
-            with INFERENCE_HANDLERS_LOCK:
-                if task not in INFERENCE_HANDLERS:
-                    inference_handler = get_inference_handler_either_custom_or_default_handler(
-                        HF_MODEL_DIR, task=task)
-                    INFERENCE_HANDLERS[task] = inference_handler
-                else:
-                    inference_handler = INFERENCE_HANDLERS[task]
-        # tracks request time
-        start_time = perf_counter()
+            if task == "feature-extraction" and HF_TASK in [
+                "sentence-similarity",
+                "sentence-embeddings",
+                "sentence-ranking",
+            ]:
+                task = "sentence-embeddings"
+            inference_handler = INFERENCE_HANDLERS.get(task)
+            if not inference_handler:
+                with INFERENCE_HANDLERS_LOCK:
+                    if task not in INFERENCE_HANDLERS:
+                        inference_handler = get_inference_handler_either_custom_or_default_handler(
+                            HF_MODEL_DIR, task=task)
+                        INFERENCE_HANDLERS[task] = inference_handler
+                    else:
+                        inference_handler = INFERENCE_HANDLERS[task]
+            # tracks request time
+            start_time = perf_counter()
 
-        if should_discard_left() and isinstance(inference_handler, HuggingFaceHandler):
-            deserialized_body['handler_params'] = {
-                'request': request
-            }
-        with idle.request_witnesses():
+            if should_discard_left() and isinstance(inference_handler, HuggingFaceHandler):
+                deserialized_body['handler_params'] = {
+                    'request': request
+                }
+
+            logger.debug("Calling inference handler prediction routine")
             # run async not blocking call
             pred = await async_handler_call(inference_handler, deserialized_body)
 
-        # log request time
-        logger.info(
-            f"POST {request.url.path} | Duration: {(perf_counter()-start_time) *1000:.2f} ms"
-        )
+            # log request time
+            logger.info(
+                f"POST {request.url.path} | Duration: {(perf_counter()-start_time) *1000:.2f} ms"
+            )
 
-        if should_discard_left() and pred is None:
-            logger.info("No content returned as caller already left")
-            return Response(status_code=204)
+            if should_discard_left() and pred is None:
+                logger.info("No content returned as caller already left")
+                return Response(status_code=204)
 
-        # response extracts content from request
-        accept = request.headers.get("accept")
-        if accept is None or accept == "*/*":
-            accept = os.environ.get("DEFAULT_ACCEPT", "application/json")
-        logger.info("Request accepts %s", accept)
-        # deserialized and resonds with json
-        serialized_response_body = ContentType.get_serializer(accept).serialize(
-            pred, accept
-        )
-        return Response(serialized_response_body, media_type=accept)
-    except Exception as e:
-        logger.exception(e)
-        return Response(
-            Jsoner.serialize({"error": str(e)}),
-            status_code=400,
-            media_type="application/json",
-        )
+            # response extracts content from request
+            accept = request.headers.get("accept")
+            if accept is None or accept == "*/*":
+                accept = os.environ.get("DEFAULT_ACCEPT", "application/json")
+            logger.info("Request accepts %s", accept)
+            # deserialized and resonds with json
+            serialized_response_body = ContentType.get_serializer(accept).serialize(
+                pred, accept
+            )
+            return Response(serialized_response_body, media_type=accept)
+        except Exception as e:
+            logger.exception(e)
+            return Response(
+                Jsoner.serialize({"error": str(e)}),
+                status_code=400,
+                media_type="application/json",
+            )
 
 
 # Create app based on which cloud environment is used
