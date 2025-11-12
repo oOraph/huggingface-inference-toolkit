@@ -50,9 +50,13 @@ async def live_check_loop():
 @contextlib.contextmanager
 def request_witnesses():
     global LAST_START, LAST_END
+    LOG.debug("Last request start was %s", LAST_START)
+    LOG.debug("Last request end was %s", LAST_END)
     # Simple assignment, concurrency safe, no need for any lock
     LAST_START = time.time()
+    LOG.debug("Current request start timestamp %s", LAST_START)
     try:
         yield
     finally:
         LAST_END = time.time()
+        LOG.debug("Current request end timestamp %s", LAST_END)
