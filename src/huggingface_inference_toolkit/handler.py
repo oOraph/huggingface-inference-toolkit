@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Dict, Literal, Optional, Union
 
 from huggingface_inference_toolkit import logging
@@ -37,7 +38,13 @@ class HuggingFaceHandler:
             :data: (obj): the raw request body data.
         :return: prediction output
         """
+        start = perf_counter()
+        pred = self._timed_call(data)
+        end = perf_counter()
+        logger.info("Inference duration: %.2f ms", (end - start) * 1000)
+        return pred
 
+    def _timed_call(self, data: Dict[str, Any]):
         logger.debug("Calling HF default handler")
         # import as late as possible to reduce the footprint
         from huggingface_inference_toolkit.sentence_transformers_utils import SENTENCE_TRANSFORMERS_TASKS
