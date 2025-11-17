@@ -2,17 +2,17 @@ import asyncio
 import base64
 import os
 from contextlib import asynccontextmanager
-import threading
 from pathlib import Path
 from time import perf_counter
 
 import orjson
+from anyio import Semaphore
 from starlette.applications import Starlette
 from starlette.responses import PlainTextResponse, Response
 from starlette.routing import Route
 
 from huggingface_inference_toolkit import idle
-from huggingface_inference_toolkit.async_utils import MAX_CONCURRENT_THREADS, MAX_THREADS_GUARD, async_handler_call
+from huggingface_inference_toolkit.async_utils import MAX_CONCURRENT_THREADS, MAX_THREADS_GUARD, async_call
 from huggingface_inference_toolkit.const import (
     HF_FRAMEWORK,
     HF_HUB_TOKEN,
@@ -33,9 +33,9 @@ from huggingface_inference_toolkit.utils import convert_params_to_int_or_bool, s
 from huggingface_inference_toolkit.vertex_ai_utils import _load_repository_from_gcs
 
 INFERENCE_HANDLERS = {}
-INFERENCE_HANDLERS_LOCK = threading.Lock()
+INFERENCE_HANDLERS_SEMAPHORE = Semaphore(1)
 MODEL_DOWNLOADED = False
-MODEL_DL_LOCK = threading.Lock()
+MODEL_DL_SEMAPHORE = Semaphore(1)
 
 
 async def prepare_model_artifacts():
@@ -44,7 +44,7 @@ async def prepare_model_artifacts():
     if idle.UNLOAD_IDLE:
         asyncio.create_task(idle.live_check_loop(), name="live_check_loop")
     else:
-        _eager_model_dl()
+        await async_call(_eager_model_dl)
         logger.info(f"Initializing model from directory:{HF_MODEL_DIR}")
         # 2. determine correct inference handler
         inference_handler = get_inference_handler_either_custom_or_default_handler(
@@ -55,7 +55,7 @@ async def prepare_model_artifacts():
 
 
 def _eager_model_dl():
-    logger.debug("Model download")
+    logger.info("Model download")
     global MODEL_DOWNLOADED
     from huggingface_inference_toolkit.heavy_utils import load_repository_from_hf
     # 1. check if model artifacts available in HF_MODEL_DIR
@@ -84,7 +84,8 @@ def _eager_model_dl():
                     HF_MODEL_DIR: {HF_MODEL_DIR} and HF_MODEL_ID:{HF_MODEL_ID}"""
             )
     else:
-        logger.debug("Model already downloaded in %s", HF_MODEL_DIR)
+        logger.info("Model already downloaded in %s", HF_MODEL_DIR)
+    logger.info("Model successfully downloaded")
     MODEL_DOWNLOADED = True
 
 
@@ -114,14 +115,19 @@ async def metrics(request):
 
 
 async def predict(request):
-    with idle.request_witnesses():
+    total_start_time = perf_counter()
+
+    async with idle.request_witnesses():
         logger.debug("Received request, scope %s", request.scope)
 
         global INFERENCE_HANDLERS
 
         if not MODEL_DOWNLOADED:
-            with MODEL_DL_LOCK:
-                await asyncio.to_thread(_eager_model_dl)
+            async with MODEL_DL_SEMAPHORE:
+                if not MODEL_DOWNLOADED:
+                    logger.info("Model dl semaphore acquired")
+                    await async_call(_eager_model_dl)
+                    logger.info("Model dl semaphore released")
         try:
             task = request.path_params.get("task", HF_TASK)
             # extracts content from request
@@ -162,28 +168,27 @@ async def predict(request):
                 task = "sentence-embeddings"
             inference_handler = INFERENCE_HANDLERS.get(task)
             if not inference_handler:
-                with INFERENCE_HANDLERS_LOCK:
+                async with INFERENCE_HANDLERS_SEMAPHORE:
                     if task not in INFERENCE_HANDLERS:
                         inference_handler = get_inference_handler_either_custom_or_default_handler(
                             HF_MODEL_DIR, task=task)
                         INFERENCE_HANDLERS[task] = inference_handler
                     else:
                         inference_handler = INFERENCE_HANDLERS[task]
-            # tracks request time
-            start_time = perf_counter()
 
             if should_discard_left() and isinstance(inference_handler, HuggingFaceHandler):
                 deserialized_body['handler_params'] = {
                     'request': request
                 }
 
-            logger.debug("Calling inference handler prediction routine")
+            logger.info("Calling inference handler prediction routine")
             # run async not blocking call
-            pred = await async_handler_call(inference_handler, deserialized_body)
+            pred = await async_call(inference_handler, deserialized_body)
 
             # log request time
+            end_time = perf_counter()
             logger.info(
-                f"POST {request.url.path} | Duration: {(perf_counter()-start_time) *1000:.2f} ms"
+                f"POST {request.url.path} Total request duration: {(end_time-total_start_time) *1000:.2f} ms"
             )
 
             if should_discard_left() and pred is None:
