@@ -46,7 +46,7 @@ async def prepare_model_artifacts():
         await async_call(_eager_model_dl)
         logger.info(f"Initializing model from directory:{HF_MODEL_DIR}")
         # 2. determine correct inference handler
-        inference_handler = get_inference_handler_either_custom_or_default_handler(
+        inference_handler = await get_inference_handler_either_custom_or_default_handler(
             HF_MODEL_DIR, task=HF_TASK
         )
         INFERENCE_HANDLERS[HF_TASK] = inference_handler
@@ -105,7 +105,7 @@ async def metrics(request):
 
 
 async def predict(request):
-    total_start_time = perf_counter()
+    start_time = perf_counter()
 
     async with idle.request_witnesses():
         logger.debug("Received request, scope %s", request.scope)
@@ -160,7 +160,7 @@ async def predict(request):
             if not inference_handler:
                 async with INFERENCE_HANDLERS_SEMAPHORE:
                     if task not in INFERENCE_HANDLERS:
-                        inference_handler = get_inference_handler_either_custom_or_default_handler(
+                        inference_handler = await get_inference_handler_either_custom_or_default_handler(
                             HF_MODEL_DIR, task=task)
                         INFERENCE_HANDLERS[task] = inference_handler
                     else:
@@ -178,7 +178,7 @@ async def predict(request):
             # log request time
             end_time = perf_counter()
             logger.info(
-                f"POST {request.url.path} Total request duration: {(end_time-total_start_time) *1000:.2f} ms"
+                f"POST {request.url.path} Total request duration: {(end_time-start_time) *1000:.2f} ms"
             )
 
             if should_discard_left() and pred is None:
