@@ -46,7 +46,9 @@ RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
 # Upgrade pip
 RUN pip install --no-cache-dir --upgrade pip
 
-COPY requirements.txt .
+ARG REQUIREMENTS=requirements.txt
+
+COPY $REQUIREMENTS requirements.txt
 RUN pip install -r requirements.txt && rm -rf /root/.cache
 
 # Copying only necessary files as filtered by .dockerignore
