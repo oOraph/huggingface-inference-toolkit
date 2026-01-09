@@ -4,7 +4,8 @@
 # we want to combine it with idle unload: the gunicorn worker will just suppress itself when unused freeing the memory
 # as wished
 from pathlib import Path
-from typing import Optional, Union
+from time import perf_counter
+from typing import Any, Dict, Optional, Union
 
 from huggingface_hub import HfApi, login, snapshot_download
 from transformers import WhisperForConditionalGeneration, pipeline
@@ -130,11 +131,12 @@ def _get_framework():
 def get_pipeline(
         task: Union[str, None],
         model_dir: Path,
-        **kwargs,
+        kwargs: Dict[str, Any],
 ) -> Pipeline:
     """
     create pipeline class for a specific task based on local saved model
     """
+    start = perf_counter()
     if task is None:
         raise EnvironmentError(
             "The task for this model is not set: Please set one: https://huggingface.co/docs#how-is-a-models-type-of-inference-api-and-widget-determined"
@@ -184,4 +186,7 @@ def get_pipeline(
         hf_pipeline.model.config.forced_decoder_ids = hf_pipeline.tokenizer.get_decoder_prompt_ids(
             language="english", task="transcribe"
         )
+
+    end = perf_counter()
+    logger.info("Model pipeline loaded in %.2f ms", (end - start) * 1000)
     return hf_pipeline  # type: ignore

@@ -4,6 +4,7 @@ from time import perf_counter
 from typing import Any, Dict, Literal, Optional, Union
 
 from huggingface_inference_toolkit import logging
+from huggingface_inference_toolkit.async_utils import async_call
 from huggingface_inference_toolkit.const import HF_TRUST_REMOTE_CODE
 from huggingface_inference_toolkit.env_utils import api_inference_compat, ignore_custom_handler
 from huggingface_inference_toolkit.logging import logger
@@ -20,16 +21,30 @@ class HuggingFaceHandler:
     Transformers, Diffusers, Sentence Transformers and Optimum pipelines.
     """
 
-    def __init__(
-        self, model_dir: Union[str, Path], task: Union[str, None] = None, framework: Literal["pt"] = "pt"
-    ) -> None:
+    def __init__(self, pipeline):
+        self.pipeline = pipeline
+
+    @classmethod
+    async def create(
+            cls,
+            model_dir: Union[str, Path],
+            task: Union[str, None] = None,
+            framework: Literal["pt"] = "pt",
+    ) -> "HuggingFaceHandler":
         from huggingface_inference_toolkit.heavy_utils import get_pipeline
-        self.pipeline = get_pipeline(
-            model_dir=model_dir,  # type: ignore
-            task=task,  # type: ignore
-            framework=framework,
-            trust_remote_code=HF_TRUST_REMOTE_CODE,
+
+        pipeline = await async_call(
+            get_pipeline,
+            task,           # type: ignore
+            model_dir,  # type: ignore
+            dict(
+                framework=framework,
+                trust_remote_code=HF_TRUST_REMOTE_CODE,
+            )
         )
+
+        return cls(pipeline)
+
 
     def __call__(self, data: Dict[str, Any]):
         """
@@ -212,11 +227,6 @@ class VertexAIHandler(HuggingFaceHandler):
     Vertex AI specific logic for inference.
     """
 
-    def __init__(
-        self, model_dir: Union[str, Path], task: Union[str, None] = None, framework: Literal["pt"] = "pt"
-    ) -> None:
-        super().__init__(model_dir=model_dir, task=task, framework=framework)
-
     def __call__(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Handles an inference request with input data and makes a prediction.
@@ -238,7 +248,7 @@ class VertexAIHandler(HuggingFaceHandler):
         return {"predictions": predictions}
 
 
-def get_inference_handler_either_custom_or_default_handler(model_dir: Path, task: Optional[str] = None) -> Any:
+async def get_inference_handler_either_custom_or_default_handler(model_dir: Path, task: Optional[str] = None) -> Any:
     """
     Returns the appropriate inference handler based on the given model directory and task.
 
@@ -257,6 +267,6 @@ def get_inference_handler_either_custom_or_default_handler(model_dir: Path, task
         return custom_pipeline
 
     if os.environ.get("AIP_MODE", None) == "PREDICTION":
-        return VertexAIHandler(model_dir=model_dir, task=task)
+        return await VertexAIHandler.create(model_dir=model_dir, task=task)
 
-    return HuggingFaceHandler(model_dir=model_dir, task=task)
+    return await HuggingFaceHandler.create(model_dir=model_dir, task=task)

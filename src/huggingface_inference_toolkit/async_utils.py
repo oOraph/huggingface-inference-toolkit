@@ -1,5 +1,5 @@
 import functools
-from typing import Any, Callable, Dict, TypeVar
+from typing import Callable, TypeVar
 
 import anyio
 from anyio import Semaphore
