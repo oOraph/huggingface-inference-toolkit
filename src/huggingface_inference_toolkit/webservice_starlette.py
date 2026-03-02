@@ -12,6 +12,7 @@ from starlette.routing import Route
 
 from huggingface_inference_toolkit import idle
 from huggingface_inference_toolkit.async_utils import MAX_CONCURRENT_THREADS, MAX_THREADS_GUARD, async_call
+from huggingface_inference_toolkit.latency_guard import latency_guard
 from huggingface_inference_toolkit.const import (
     HF_FRAMEWORK,
     HF_HUB_TOKEN,
@@ -99,12 +100,21 @@ async def metrics(request):
     batch_current_size = MAX_CONCURRENT_THREADS - MAX_THREADS_GUARD.value
     queue_size = MAX_THREADS_GUARD.statistics().tasks_waiting
     return PlainTextResponse(
-        f"inf_batch_current_size {batch_current_size}\n" +
+        f"inf_batch_current_size {batch_current_size}\n"
         f"inf_queue_size {queue_size}\n"
+        f"inf_accepting {int(latency_guard.accepting)}\n"
+        f"inf_auto_frozen {int(latency_guard.auto_frozen)}\n"
     )
 
 
 async def predict(request):
+    if not latency_guard.accepting:
+        return Response(
+            Jsoner.serialize({"error": "Service temporarily unavailable, overload detected"}),
+            status_code=503,
+            media_type="application/json",
+        )
+
     start_time = perf_counter()
 
     async with idle.request_witnesses():
