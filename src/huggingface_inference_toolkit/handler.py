@@ -56,10 +56,10 @@ class HuggingFaceHandler:
         """
         start = perf_counter()
         pred = self._timed_call(data)
-        end = perf_counter()
-        duration = end - start
+        duration = perf_counter() - start
         logger.info("Inference duration: %.2f ms", duration * 1000)
-        latency_guard.record(duration)
+        if pred is not None:
+            latency_guard.record(duration)
         return pred
 
     def _timed_call(self, data: Dict[str, Any]):
