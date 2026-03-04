@@ -39,6 +39,17 @@ MODEL_DOWNLOADED = False
 MODEL_DL_SEMAPHORE = Semaphore(1)
 
 
+async def drain_queue():
+    """Shutdown hook: wait for all in-flight and queued inference requests to complete."""
+    pending = MAX_THREADS_GUARD.statistics().tasks_waiting
+    active = MAX_CONCURRENT_THREADS - MAX_THREADS_GUARD.value
+    if pending or active:
+        logger.info("Shutdown: draining %d active + %d queued request(s)", active, pending)
+        while MAX_THREADS_GUARD.value < MAX_CONCURRENT_THREADS or MAX_THREADS_GUARD.statistics().tasks_waiting > 0:
+            await asyncio.sleep(0.1)
+    logger.info("Shutdown: queue drained")
+
+
 async def prepare_model_artifacts():
     global INFERENCE_HANDLERS
 
@@ -97,6 +108,7 @@ async def lifespan(app):
     # startup; there is no per-process shutdown work to do.
     await prepare_model_artifacts()
     yield
+    await drain_queue()
 
 
 async def health(request):
