@@ -5,7 +5,7 @@ from huggingface_inference_toolkit.logging import logger
 ENABLED = os.getenv("LATENCY_GUARD_ENABLED", "0").lower() in ("1", "true")
 
 # How many inference calls to observe before activating the guard
-WARMUP_REQUESTS = int(os.getenv("LATENCY_WARMUP_REQUESTS", "5"))
+WARMUP_REQUESTS = int(os.getenv("LATENCY_WARMUP_REQUESTS", "10"))
 # EMA alpha for the fast (recent) window — ~3-5 requests
 FAST_ALPHA = float(os.getenv("LATENCY_FAST_ALPHA", "0.3"))
 # EMA alpha for the slow (baseline) window — ~20 requests
