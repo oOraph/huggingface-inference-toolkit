@@ -38,6 +38,17 @@ MODEL_DOWNLOADED = False
 MODEL_DL_SEMAPHORE = Semaphore(1)
 
 
+async def drain_queue():
+    """Shutdown hook: wait for all in-flight and queued inference requests to complete."""
+    pending = MAX_THREADS_GUARD.statistics().tasks_waiting
+    active = MAX_CONCURRENT_THREADS - MAX_THREADS_GUARD.value
+    if pending or active:
+        logger.info("Shutdown: draining %d active + %d queued request(s)", active, pending)
+        while MAX_THREADS_GUARD.value < MAX_CONCURRENT_THREADS or MAX_THREADS_GUARD.statistics().tasks_waiting > 0:
+            await asyncio.sleep(0.1)
+    logger.info("Shutdown: queue drained")
+
+
 async def prepare_model_artifacts():
     global INFERENCE_HANDLERS
 
@@ -232,6 +243,7 @@ if os.getenv("AIP_MODE", None) == "PREDICTION":
             Route(_predict_route, predict, methods=["POST"]),
         ],
         on_startup=[prepare_model_artifacts],
+        on_shutdown=[drain_queue],
     )
 else:
     routes = [
@@ -249,4 +261,5 @@ else:
         debug=False,
         routes=routes,
         on_startup=[prepare_model_artifacts],
+        on_shutdown=[drain_queue],
     )

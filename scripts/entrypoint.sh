@@ -59,4 +59,4 @@ if [[ ! -z "${HF_MODEL_DIR}" ]]; then
 fi
 
 # Start the server
-exec gunicorn webservice_starlette:app -k uvicorn.workers.UvicornWorker --workers ${WORKERS:-1} --bind 0.0.0.0:${PORT} --timeout 30
+exec gunicorn webservice_starlette:app -k uvicorn.workers.UvicornWorker --workers ${WORKERS:-1} --bind 0.0.0.0:${PORT} --timeout 30 --graceful-timeout ${GRACEFUL_TIMEOUT:-300}
