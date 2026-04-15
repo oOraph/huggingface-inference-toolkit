@@ -1,6 +1,40 @@
 ARG BASE_IMAGE=nvidia/cuda:12.1.0-devel-ubuntu22.04
+ARG RUNTIME_IMAGE=nvidia/cuda:12.1.0-runtime-ubuntu22.04
 
-FROM $BASE_IMAGE AS base
+# ── builder: compile kenlm + install all Python deps into a venv ─────────────
+FROM ${BASE_IMAGE} AS builder
+SHELL ["/bin/bash", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && \
+    apt-get install -y software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get -y upgrade --only-upgrade systemd openssl cryptsetup && \
+    apt-get install -y \
+      build-essential cmake curl git \
+      gcc g++ \
+      libprotobuf-dev protobuf-compiler \
+      python3.11 python3.11-dev python3.11-venv \
+      libsndfile1-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
+    ln -sf /usr/bin/python3.11 /usr/bin/python
+
+RUN python3.11 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+RUN pip install --no-cache-dir --upgrade pip
+
+ARG REQUIREMENTS=requirements.txt
+COPY ${REQUIREMENTS} requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+RUN pip install --no-cache-dir ".[torch,st,diffusers]"
+
+# ── runtime: lean CUDA runtime image, no compilers ───────────────────────────
+FROM ${RUNTIME_IMAGE} AS runtime
 SHELL ["/bin/bash", "-c"]
 
 LABEL maintainer="Hugging Face"
@@ -10,51 +44,27 @@ ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
 
 RUN apt-get update && \
-    apt-get install software-properties-common -y && \
+    apt-get install -y software-properties-common && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get -y upgrade --only-upgrade systemd openssl cryptsetup && \
     apt-get install -y \
-    build-essential \
-    bzip2 \
-    cmake \
-    curl \
-    git \
-    git-lfs \
-    tar \
-    gcc \
-    g++ \
-    libprotobuf-dev \
-    protobuf-compiler \
-    python3.11 \
-    python3.11-dev \
-    libsndfile1-dev \
-    ffmpeg \
-    && apt-get clean autoremove --yes \
-    && rm -rf /var/lib/{apt,dpkg,cache,log}
+      python3.11 \
+      git git-lfs \
+      bzip2 tar curl \
+      libsndfile1 \
+      ffmpeg \
+      libprotobuf23 \
+      libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /var/lib/dpkg && touch /var/lib/dpkg/status
 
-# Set Python 3.11 as the default python version
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
     ln -sf /usr/bin/python3.11 /usr/bin/python
 
-# Install pip from source
-RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
-    python get-pip.py && \
-    rm get-pip.py
-
-# Upgrade pip
-RUN pip install --no-cache-dir --upgrade pip
-
-ARG REQUIREMENTS=requirements.txt
-
-COPY $REQUIREMENTS requirements.txt
-RUN pip install -r requirements.txt && rm -rf /root/.cache
-
-# Copying only necessary files as filtered by .dockerignore
-COPY . .
-# Install wheel and setuptools
-RUN pip install --no-cache-dir --upgrade pip ".[torch,st,diffusers]"
+# Copy only the venv produced by the builder — no compilers or dev headers
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application
 COPY src/huggingface_inference_toolkit huggingface_inference_toolkit
