@@ -32,7 +32,8 @@ def test_pipe_on_gpu():
         )
         pipe = get_pipeline(
             "text-to-image",
-            storage_dir.as_posix()
+            storage_dir.as_posix(),
+            {}
         )
         logging.error(f"Pipe: {pipe.pipeline}")
         assert pipe.pipeline.device.type == "cuda"
