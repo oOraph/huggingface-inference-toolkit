@@ -17,7 +17,7 @@ def test_get_diffusers_pipeline():
             tmpdirname,
             framework="pytorch"
         )
-        pipe = get_pipeline("text-to-image", storage_dir.as_posix())
+        pipe = get_pipeline("text-to-image", storage_dir.as_posix(), {})
         assert isinstance(pipe, IEAutoPipelineForText2Image)
 
 
@@ -46,6 +46,6 @@ def test_text_to_image_task():
             tmpdirname,
             framework="pytorch"
         )
-        pipe = get_pipeline("text-to-image", storage_dir.as_posix())
+        pipe = get_pipeline("text-to-image", storage_dir.as_posix(), {})
         res = pipe("Lets create an embedding")
         assert isinstance(res, Image.Image)

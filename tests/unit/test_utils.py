@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import tempfile
@@ -113,6 +114,7 @@ def test_get_pipeline():
         pipe = get_pipeline(
             task = TASK,
             model_dir = storage_dir.as_posix(),
+            kwargs = {},
         )
         res = pipe("Life is good, Life is bad")
         assert "score" in res[0]
@@ -131,6 +133,7 @@ def test_whisper_long_audio(cache_test_dir):
         pipe = get_pipeline(
             task = "automatic-speech-recognition",
             model_dir = storage_dir.as_posix(),
+            kwargs = {},
         )
         res = pipe(f"{cache_test_dir}/resources/audio/long_sample.mp3")
 
@@ -144,7 +147,7 @@ def test_wrapped_pipeline():
             target_dir = tmpdirname,
             framework="pytorch"
         )
-        conv_pipe = get_pipeline("conversational", storage_dir.as_posix())
+        conv_pipe = get_pipeline("conversational", storage_dir.as_posix(), {})
         data = [
             {
                 "role": "user",
@@ -193,7 +196,7 @@ def test_get_inference_handler_either_custom_or_default_pipeline():
             tmpdirname,
             framework="pytorch"
         )
-        pipeline = get_inference_handler_either_custom_or_default_handler(str(storage_dir))
+        pipeline = asyncio.run(get_inference_handler_either_custom_or_default_handler(str(storage_dir)))
         payload = "test"
         assert pipeline.path == str(storage_dir)
         assert pipeline(payload) == payload
@@ -201,6 +204,6 @@ def test_get_inference_handler_either_custom_or_default_pipeline():
     with tempfile.TemporaryDirectory() as tmpdirname:
         MODEL = "lysandre/tiny-bert-random"
         TASK = "text-classification"
-        pipeline = get_inference_handler_either_custom_or_default_handler(MODEL, TASK)
+        pipeline = asyncio.run(get_inference_handler_either_custom_or_default_handler(MODEL, TASK))
         res = pipeline({"inputs": "Life is good, Life is bad"})
         assert "score" in res[0]

@@ -17,7 +17,7 @@ from huggingface_inference_toolkit.sentence_transformers_utils import (
 def test_get_sentence_transformers_pipeline():
     with tempfile.TemporaryDirectory() as tmpdirname:
         storage_dir = load_repository_from_hf("sentence-transformers/all-MiniLM-L6-v2", tmpdirname)
-        pipe = get_pipeline("sentence-embeddings", storage_dir.as_posix())
+        pipe = get_pipeline("sentence-embeddings", storage_dir.as_posix(), {})
         assert isinstance(pipe, SentenceEmbeddingPipeline)
 
 

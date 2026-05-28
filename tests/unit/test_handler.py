@@ -1,3 +1,4 @@
+import asyncio
 import tempfile
 from typing import Dict
 
@@ -30,7 +31,7 @@ def test_pt_get_device() -> None:
     with tempfile.TemporaryDirectory() as tmpdirname:
         # https://github.com/huggingface/infinity/blob/test-ovh/test/integ/utils.py
         storage_dir = load_repository_from_hf(MODEL, tmpdirname, framework="pytorch")
-        h = HuggingFaceHandler(model_dir=str(storage_dir), task=TASK)
+        h = asyncio.run(HuggingFaceHandler.create(str(storage_dir), task=TASK))
         if torch.cuda.is_available():
             assert h.pipeline.model.device == torch.device(type="cuda", index=0)
         else:
@@ -42,7 +43,7 @@ def test_pt_predict_call(input_data: Dict[str, str]) -> None:
     with tempfile.TemporaryDirectory() as tmpdirname:
         # https://github.com/huggingface/infinity/blob/test-ovh/test/integ/utils.py
         storage_dir = load_repository_from_hf(MODEL, tmpdirname, framework="pytorch")
-        h = HuggingFaceHandler(model_dir=str(storage_dir), task=TASK)
+        h = asyncio.run(HuggingFaceHandler.create(str(storage_dir), task=TASK))
 
         prediction = h(input_data)
         assert "label" in prediction[0]
@@ -57,7 +58,7 @@ def test_pt_custom_pipeline(input_data: Dict[str, str]) -> None:
             tmpdirname,
             framework="pytorch",
         )
-        h = get_inference_handler_either_custom_or_default_handler(str(storage_dir), task="custom")
+        h = asyncio.run(get_inference_handler_either_custom_or_default_handler(str(storage_dir), task="custom"))
         assert h(input_data) == input_data
 
 
@@ -67,7 +68,7 @@ def test_pt_sentence_transformers_pipeline(input_data: Dict[str, str]) -> None:
         storage_dir = load_repository_from_hf(
             "sentence-transformers/all-MiniLM-L6-v2", tmpdirname, framework="pytorch"
         )
-        h = get_inference_handler_either_custom_or_default_handler(str(storage_dir), task="sentence-embeddings")
+        h = asyncio.run(get_inference_handler_either_custom_or_default_handler(str(storage_dir), task="sentence-embeddings"))
         pred = h(input_data)
         assert isinstance(pred["embeddings"], list)
 
@@ -77,7 +78,7 @@ def test_tf_get_device():
     with tempfile.TemporaryDirectory() as tmpdirname:
         # https://github.com/huggingface/infinity/blob/test-ovh/test/integ/utils.py
         storage_dir = load_repository_from_hf(MODEL, tmpdirname, framework="tensorflow")
-        h = HuggingFaceHandler(model_dir=str(storage_dir), task=TASK)
+        h = asyncio.run(HuggingFaceHandler.create(str(storage_dir), task=TASK, framework="tf"))
         if _is_gpu_available():
             assert h.pipeline.device == 0
         else:
@@ -89,7 +90,7 @@ def test_tf_predict_call(input_data: Dict[str, str]) -> None:
     with tempfile.TemporaryDirectory() as tmpdirname:
         # https://github.com/huggingface/infinity/blob/test-ovh/test/integ/utils.py
         storage_dir = load_repository_from_hf(MODEL, tmpdirname, framework="tensorflow")
-        handler = HuggingFaceHandler(model_dir=str(storage_dir), task=TASK, framework="tf")
+        handler = asyncio.run(HuggingFaceHandler.create(str(storage_dir), task=TASK, framework="tf"))
 
         prediction = handler(input_data)
         assert "label" in prediction[0]
@@ -104,7 +105,7 @@ def test_tf_custom_pipeline(input_data: Dict[str, str]) -> None:
             tmpdirname,
             framework="tensorflow",
         )
-        h = get_inference_handler_either_custom_or_default_handler(str(storage_dir), task="custom")
+        h = asyncio.run(get_inference_handler_either_custom_or_default_handler(str(storage_dir), task="custom"))
         assert h(input_data) == input_data
 
 
@@ -116,4 +117,4 @@ def test_tf_sentence_transformers_pipeline():
             "sentence-transformers/all-MiniLM-L6-v2", tmpdirname, framework="tensorflow"
         )
         with pytest.raises(Exception) as _exc_info:
-            get_inference_handler_either_custom_or_default_handler(str(storage_dir), task="sentence-embeddings")
+            asyncio.run(get_inference_handler_either_custom_or_default_handler(str(storage_dir), task="sentence-embeddings"))
