@@ -13,7 +13,6 @@ from starlette.routing import Route
 
 from huggingface_inference_toolkit import idle
 from huggingface_inference_toolkit.async_utils import MAX_CONCURRENT_THREADS, MAX_THREADS_GUARD, async_call
-from huggingface_inference_toolkit.latency_guard import latency_guard
 from huggingface_inference_toolkit.const import (
     HF_FRAMEWORK,
     HF_HUB_TOKEN,
@@ -27,6 +26,7 @@ from huggingface_inference_toolkit.handler import (
     HuggingFaceHandler,
     get_inference_handler_either_custom_or_default_handler,
 )
+from huggingface_inference_toolkit.latency_guard import latency_guard
 from huggingface_inference_toolkit.logging import logger
 from huggingface_inference_toolkit.serialization.base import ContentType
 from huggingface_inference_toolkit.serialization.json_utils import Jsoner

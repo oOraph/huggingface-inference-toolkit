@@ -38,10 +38,10 @@ class HuggingFaceHandler:
             get_pipeline,
             task,           # type: ignore
             model_dir,  # type: ignore
-            dict(
-                framework=framework,
-                trust_remote_code=HF_TRUST_REMOTE_CODE,
-            )
+            {
+                "framework": framework,
+                "trust_remote_code": HF_TRUST_REMOTE_CODE,
+            }
         )
 
         return cls(pipeline)
