@@ -8,7 +8,7 @@ librosa
 pyctcdecode>=0.3.0
 phonemizer
 ffmpeg
-starlette
+starlette>=1.0.1
 uvicorn
 gunicorn
 pandas
