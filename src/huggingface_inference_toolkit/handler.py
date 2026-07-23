@@ -34,12 +34,14 @@ class HuggingFaceHandler:
     ) -> "HuggingFaceHandler":
         from huggingface_inference_toolkit.heavy_utils import get_pipeline
 
+        # `framework` is intentionally not forwarded: transformers v5 dropped the
+        # `framework` pipeline argument (PyTorch-only), and passing it raises a
+        # TypeError in `_sanitize_parameters`.
         pipeline = await async_call(
             get_pipeline,
             task,           # type: ignore
             model_dir,  # type: ignore
             {
-                "framework": framework,
                 "trust_remote_code": HF_TRUST_REMOTE_CODE,
             }
         )

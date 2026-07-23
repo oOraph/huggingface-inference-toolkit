@@ -8,9 +8,15 @@ from time import perf_counter
 from typing import Any, Dict, Optional, Union
 
 from huggingface_hub import HfApi, login, snapshot_download
-from transformers import WhisperForConditionalGeneration, pipeline
-from transformers.file_utils import is_tf_available, is_torch_available
+from transformers import WhisperForConditionalGeneration, is_torch_available, pipeline
 from transformers.pipelines import Pipeline
+
+
+def is_tf_available():
+    # TensorFlow support was removed in transformers v5; the toolkit image is
+    # PyTorch-only, so TF is never available.
+    return False
+
 
 from huggingface_inference_toolkit.diffusers_utils import (
     get_diffusers_pipeline,

@@ -25,11 +25,11 @@ VERSION = "0.5.6"
 # libavcodec-extra : libavcodec-extra  includes additional codecs for ffmpeg
 
 extras = {}
-extras["st"] = ["sentence_transformers==4.0.2"]
-extras["diffusers"] = ["diffusers==0.33.1", "accelerate==1.6.0"]
+extras["st"] = ["sentence_transformers==5.6.0"]
+extras["diffusers"] = ["diffusers==0.39.0", "accelerate==1.14.0"]
 # Includes `peft` as PEFT requires `torch` so having `peft` as a core dependency
 # means that `torch` will be installed even if the `torch` extra is not specified.
-extras["torch"] = ["torch==2.5.1", "torchvision", "torchaudio", "peft==0.15.1"]
+extras["torch"] = ["torch==2.6.0", "torchvision", "torchaudio", "peft==0.19.1"]
 extras["quality"] = ["isort", "ruff"]
 extras["test"] = test_requirements
 extras["inf2"] = ["optimum-neuron"]
