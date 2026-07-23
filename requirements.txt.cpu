@@ -1,8 +1,8 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 
 kenlm@ git+https://github.com/kpu/kenlm@ba83eafdce6553addd885ed3da461bb0d60f8df7
-transformers[audio,sentencepiece,sklearn,vision]==4.51.3
-huggingface_hub[hf_transfer,hf_xet]==0.31.1
+transformers[audio,sentencepiece,sklearn,vision]==5.5.4
+huggingface_hub[hf_xet]==1.24.0
 Pillow
 librosa
 pyctcdecode>=0.3.0
@@ -15,11 +15,11 @@ pandas
 orjson
 einops
 timm
-sentence_transformers==4.0.2
-diffusers==0.33.1
-accelerate==1.6.0
+sentence_transformers==5.4.1
+diffusers==0.36.0
+accelerate==1.11.0
 torch==2.5.1+cpu
 torchvision==0.20.1+cpu
 torchaudio==2.5.1+cpu
-peft==0.15.1
+peft==0.18.0
 psutil>=6.0.0
