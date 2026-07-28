@@ -102,11 +102,14 @@ task2model = {
         "tensorflow": None,
     },
     "table-question-answering": {
-        "pytorch": "philschmid/tapex-tiny",
+        # was philschmid/tapex-tiny, which needs TapexTokenizer (removed in transformers v5)
+        "pytorch": "google/tapas-tiny-finetuned-wtq",
         "tensorflow": None,
     },
     "image-segmentation": {
-        "pytorch": "hf-internal-testing/tiny-random-beit-pipeline",
+        # was hf-internal-testing/tiny-random-beit-pipeline, whose config.json has
+        # "vocab_size": {} and is rejected by the strict config validation in transformers v5
+        "pytorch": "hf-internal-testing/tiny-random-SegformerForSemanticSegmentation",
         "tensorflow": None,
     },
     "image-text-to-text": {
