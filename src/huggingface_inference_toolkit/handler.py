@@ -77,7 +77,7 @@ class HuggingFaceHandler:
             if should_discard_left():
                 request = handler_params.get("request")
                 if not request:
-                    logger.warn("Cannot know if request caller already left, missing request handler param")
+                    logger.warning("Cannot know if request caller already left, missing request handler param")
                 elif already_left(request):
                     logger.info("Discarding request as the caller already left")
                     return None
@@ -150,7 +150,7 @@ class HuggingFaceHandler:
         if api_inference_compat():
             if self.pipeline.task == "text-classification" and isinstance(inputs, str):
                 inputs = [inputs]
-                parameters.setdefault("top_k", os.environ.get("DEFAULT_TOP_K", 5))
+                parameters.setdefault("top_k", int(os.environ.get("DEFAULT_TOP_K", 5)))
             if self.pipeline.task == "token-classification":
                 parameters.setdefault("aggregation_strategy", os.environ.get("DEFAULT_AGGREGATION_STRATEGY", "simple"))
 

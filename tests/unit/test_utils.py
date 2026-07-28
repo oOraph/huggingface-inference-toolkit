@@ -4,8 +4,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from transformers.file_utils import is_torch_available
-from transformers.testing_utils import require_tf, require_torch, slow
+from transformers.testing_utils import require_torch, slow
 
 from huggingface_inference_toolkit.handler import get_inference_handler_either_custom_or_default_handler
 from huggingface_inference_toolkit.heavy_utils import (
@@ -28,23 +27,6 @@ def test_load_revision_repository_from_hf():
         folder_contents = os.listdir(storage_folder)
         # revision doesn't have tokenizer
         assert "tokenizer_config.json" not in folder_contents
-
-
-@require_tf
-def test_load_tensorflow_repository_from_hf():
-    MODEL = "lysandre/tiny-bert-random"
-    with tempfile.TemporaryDirectory() as tmpdirname:
-        tf_tmp = Path(tmpdirname).joinpath("tf")
-        tf_tmp.mkdir(parents=True, exist_ok=True)
-
-        storage_folder = load_repository_from_hf(MODEL, tf_tmp, framework="tensorflow")
-        # folder contains all config files and pytorch_model.bin
-        folder_contents = os.listdir(storage_folder)
-        assert "pytorch_model.bin" not in folder_contents
-        # filter framework
-        assert "tf_model.h5" in folder_contents
-        # revision doesn't have tokenizer
-        assert "tokenizer_config.json" in folder_contents
 
 
 def test_load_onnx_repository_from_hf():
@@ -94,15 +76,6 @@ def test_gpu_available():
 def test_get_framework_pytorch():
     framework = _get_framework()
     assert framework == "pytorch"
-
-
-@require_tf
-def test_get_framework_tensorflow():
-    framework = _get_framework()
-    if is_torch_available():
-        assert framework == "pytorch"
-    else:
-        assert framework == "tensorflow"
 
 
 @require_torch

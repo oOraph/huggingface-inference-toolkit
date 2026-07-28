@@ -17,7 +17,7 @@ sentence_transformers==5.6.0
 diffusers==0.39.0
 accelerate==1.14.0
 torch==2.6.0
-torchvision
-torchaudio
+torchvision==0.21.0
+torchaudio==2.6.0
 peft==0.19.1
 psutil>=6.0.0

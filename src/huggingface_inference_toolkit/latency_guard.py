@@ -1,4 +1,5 @@
 import os
+import time
 
 from huggingface_inference_toolkit.logging import logger
 
@@ -14,13 +15,19 @@ SLOW_ALPHA = float(os.getenv("LATENCY_SLOW_ALPHA", "0.05"))
 OVERLOAD_FACTOR = float(os.getenv("LATENCY_OVERLOAD_FACTOR", "3.0"))
 # Auto-unfreeze when fast_ema < RECOVERY_FACTOR * slow_ema (hysteresis: < OVERLOAD_FACTOR)
 RECOVERY_FACTOR = float(os.getenv("LATENCY_RECOVERY_FACTOR", "1.5"))
+# How long we stay frozen before letting requests through again to re-measure latency
+FREEZE_SECONDS = float(os.getenv("LATENCY_FREEZE_SECONDS", "10"))
 
 
 class LatencyGuard:
     """
     Tracks pure inference latency via a dual EMA and auto-freezes new request
     acceptance when recent latency drifts too far above the learned baseline.
-    Also supports manual freeze/unfreeze via admin endpoints.
+
+    Freezing is time bounded: a frozen worker runs no inference, so it records no
+    new latency either and could never unfreeze on its own. After FREEZE_SECONDS we
+    accept requests again ("half open") to get fresh samples, and either unfreeze for
+    good once latency is back to the baseline, or freeze again for another round.
     """
 
     def __init__(self):
@@ -28,6 +35,7 @@ class LatencyGuard:
         self._slow_ema = None
         self._warmup_count = 0
         self._auto_frozen = False
+        self._frozen_at = 0.0
 
     def record(self, duration_s: float):
         """Called after each inference with its wall-clock duration in seconds. No-op if disabled."""
@@ -53,16 +61,23 @@ class LatencyGuard:
                 self._fast_ema * 1000, self._slow_ema * 1000, ratio,
             )
             self._auto_frozen = True
+            self._frozen_at = time.monotonic()
         elif self._auto_frozen and ratio < RECOVERY_FACTOR:
             logger.info(
                 "LatencyGuard: auto-unfreezing — fast_ema=%.1fms slow_ema=%.1fms ratio=%.2f",
                 self._fast_ema * 1000, self._slow_ema * 1000, ratio,
             )
             self._auto_frozen = False
+        elif self._auto_frozen and ratio > OVERLOAD_FACTOR:
+            # Still overloaded on the half open probe: freeze for another round
+            self._frozen_at = time.monotonic()
 
     @property
     def accepting(self) -> bool:
-        return not ENABLED or not self._auto_frozen
+        if not ENABLED or not self._auto_frozen:
+            return True
+        # Half open: let requests through again so that fresh latency samples can be recorded
+        return time.monotonic() - self._frozen_at >= FREEZE_SECONDS
 
     @property
     def auto_frozen(self) -> bool:

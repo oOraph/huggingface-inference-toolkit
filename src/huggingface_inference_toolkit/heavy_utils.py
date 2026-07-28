@@ -11,13 +11,6 @@ from huggingface_hub import HfApi, login, snapshot_download
 from transformers import WhisperForConditionalGeneration, is_torch_available, pipeline
 from transformers.pipelines import Pipeline
 
-
-def is_tf_available():
-    # TensorFlow support was removed in transformers v5; the toolkit image is
-    # PyTorch-only, so TF is never available.
-    return False
-
-
 from huggingface_inference_toolkit.diffusers_utils import (
     get_diffusers_pipeline,
     is_diffusers_available,
@@ -93,43 +86,35 @@ def get_device():
         return -1
 
 
-if is_tf_available():
-    import tensorflow as tf
-
-
 if is_torch_available():
     import torch
 
 
+# TensorFlow support was removed in transformers v5 and the toolkit image is PyTorch-only,
+# so PyTorch is the only framework we can run inference with.
 def _is_gpu_available():
     """
     checks if a gpu is available.
     """
-    if is_tf_available():
-        return True if len(tf.config.list_physical_devices("GPU")) > 0 else False
-    elif is_torch_available():
+    if is_torch_available():
         return torch.cuda.is_available()
     else:
         raise RuntimeError(
-            "At least one of TensorFlow 2.0 or PyTorch should be installed. "
-            "To install TensorFlow 2.0, read the instructions at https://www.tensorflow.org/install/ "
+            "PyTorch should be installed. "
             "To install PyTorch, read the instructions at https://pytorch.org/."
         )
 
 
 def _get_framework():
     """
-    extracts which DL framework is used for inference, if both are installed use pytorch
+    extracts which DL framework is used for inference
     """
 
     if is_torch_available():
         return "pytorch"
-    elif is_tf_available():
-        return "tensorflow"
     else:
         raise RuntimeError(
-            "At least one of TensorFlow 2.0 or PyTorch should be installed. "
-            "To install TensorFlow 2.0, read the instructions at https://www.tensorflow.org/install/ "
+            "PyTorch should be installed. "
             "To install PyTorch, read the instructions at https://pytorch.org/."
         )
 
