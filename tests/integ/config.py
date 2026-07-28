@@ -254,7 +254,14 @@ task2output = {
     ],
     "object-detection": [{"score": 0.9143241047859192, "label": "cat", "box": {}}],
     "image-segmentation": [{"score": 0.9143241047859192, "label": "cat", "mask": {}}],
-    "table-question-answering": {"answer": "36542"},
+    # TAPAS answers carry the matched cells and the aggregation operator, where the previous
+    # (seq2seq) TAPEX fixture only returned `answer`. The validator compares keys, not values.
+    "table-question-answering": {
+        "answer": "COUNT > 36542",
+        "coordinates": [[0, 1]],
+        "cells": ["36542"],
+        "aggregator": "COUNT",
+    },
     "conversational": [
         {"role": "user", "content": "Which movie is the best ?"},
         {"role": "assistant", "content": "It's Die Hard for sure."},
