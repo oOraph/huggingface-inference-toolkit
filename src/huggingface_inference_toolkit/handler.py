@@ -272,10 +272,9 @@ async def get_inference_handler_either_custom_or_default_handler(model_dir: Path
     Returns:
         InferenceHandler: The appropriate inference handler based on the given model directory and task.
     """
-    if ignore_custom_handler():
-        custom_pipeline = None
-    else:
-        custom_pipeline = check_and_register_custom_pipeline_from_directory(model_dir)
+    custom_pipeline = (
+        None if ignore_custom_handler() else check_and_register_custom_pipeline_from_directory(model_dir)
+    )
     if custom_pipeline is not None:
         return custom_pipeline
 

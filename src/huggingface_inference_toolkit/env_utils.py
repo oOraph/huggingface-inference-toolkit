@@ -29,5 +29,9 @@ def api_inference_compat():
     return strtobool(os.getenv("API_INFERENCE_COMPAT", "false"))
 
 
-def ignore_custom_handler():
+def ignore_custom_handler() -> bool:
+    """
+    Whether to ignore a `handler.py` shipped in the model repository and serve the model with the
+    default pipeline instead.
+    """
     return strtobool(os.getenv("IGNORE_CUSTOM_HANDLER", "false"))
