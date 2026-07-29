@@ -1,7 +1,8 @@
-from typing import Callable, TypeVar
+from typing import Callable, Optional, TypeVar
 
 import anyio
 from anyio import Semaphore
+from starlette.requests import Request
 from typing_extensions import ParamSpec
 
 from huggingface_inference_toolkit.logging import logger
@@ -16,8 +17,53 @@ P = ParamSpec("P")
 
 # moves blocking call to asyncio threadpool limited to 1 to not overload the system
 # REF: https://stackoverflow.com/a/70929141
-async def async_call(handler: Callable[P, T], *args, **kwargs) -> T:
+async def async_call(
+    handler: Callable[P, T], *args, request: Optional[Request] = None, **kwargs
+) -> Optional[T]:
+    """
+    Run `handler` in the threadpool, once a slot is free.
+
+    When `request` is given, the caller is checked for having left just after the slot is
+    acquired, and the call is skipped if it has: under a burst, requests queue here while their
+    callers time out and walk away, and running the model for them buys nobody anything. The
+    check belongs at this exact point — the request has waited its whole queue time by now, so
+    this is the latest and most accurate moment to ask.
+
+    A missed detection only costs us an inference we could have skipped; it never discards a
+    request whose caller is still waiting.
+    """
     logger.info("Setting blocking call to async handler")
     async with MAX_THREADS_GUARD:
         logger.info("Async call semaphore passed")
+        if request is not None and await _caller_left(request):
+            logger.info("Discarding request as the caller already left")
+            return None
         return await anyio.to_thread.run_sync(handler, *args, **kwargs)
+
+
+async def _caller_left(request: Request) -> bool:
+    """
+    Whether the caller of `request` has given up waiting for its answer.
+
+    Must be called after the request body has been read: `is_disconnected()` polls one ASGI
+    message, so before the body is drained it would eat the payload. Once `Request.body()` has
+    cached it, the only message left to receive is `http.disconnect`.
+
+    It is polled twice on purpose. `is_disconnected()` polls with an already-cancelled scope, so
+    it reports only a disconnect the event loop has already processed. If the loop was blocked
+    while the caller went away, uvicorn's `connection_lost` has not run yet and the first poll
+    returns False — and that poll's own suspension is what lets the loop catch up, so the second
+    one sees it. Measured on starlette 0.47.2 / uvicorn 0.35.0 and 1.3.1 / 0.51.0, with the
+    caller aborting mid-request:
+
+        loop blocked during the wait -> [False, True, True]
+        loop free during the wait    -> [True,  True,  True]
+
+    Polling twice is what makes this independent of the loop's state, which we should not assume:
+    `predict` still decodes images (PIL) and audio (librosa) synchronously on the loop.
+
+    This replaced a `psutil` scan of the host TCP table, which was needed only because the check
+    used to live inside the handler, i.e. in the worker thread, where a coroutine cannot be
+    called at all.
+    """
+    return await request.is_disconnected() or await request.is_disconnected()

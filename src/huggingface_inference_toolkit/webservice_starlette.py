@@ -23,7 +23,6 @@ from huggingface_inference_toolkit.const import (
 )
 from huggingface_inference_toolkit.env_utils import api_inference_compat
 from huggingface_inference_toolkit.handler import (
-    HuggingFaceHandler,
     get_inference_handler_either_custom_or_default_handler,
 )
 from huggingface_inference_toolkit.latency_guard import latency_guard
@@ -198,14 +197,11 @@ async def predict(request):
                     else:
                         inference_handler = INFERENCE_HANDLERS[task]
 
-            if should_discard_left() and isinstance(inference_handler, HuggingFaceHandler):
-                deserialized_body['handler_params'] = {
-                    'request': request
-                }
-
             logger.info("Calling inference handler prediction routine")
-            # run async not blocking call
-            pred = await async_call(inference_handler, deserialized_body)
+            # run async not blocking call, skipping it if the caller is gone by the time a slot frees
+            pred = await async_call(
+                inference_handler, deserialized_body, request=request if should_discard_left() else None
+            )
 
             # log request time
             end_time = perf_counter()
@@ -213,7 +209,7 @@ async def predict(request):
                 f"POST {request.url.path} Total request duration: {(end_time-start_time) *1000:.2f} ms"
             )
 
-            if should_discard_left() and pred is None:
+            if pred is None:
                 logger.info("No content returned as caller already left")
                 return Response(status_code=204)
 

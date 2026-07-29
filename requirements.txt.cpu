@@ -22,4 +22,3 @@ torch==2.6.0+cpu
 torchvision==0.21.0+cpu
 torchaudio==2.6.0+cpu
 peft==0.19.1
-psutil>=6.0.0

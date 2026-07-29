@@ -9,11 +9,7 @@ from huggingface_inference_toolkit.const import HF_TRUST_REMOTE_CODE
 from huggingface_inference_toolkit.env_utils import api_inference_compat, ignore_custom_handler
 from huggingface_inference_toolkit.latency_guard import latency_guard
 from huggingface_inference_toolkit.logging import logger
-from huggingface_inference_toolkit.utils import (
-    already_left,
-    check_and_register_custom_pipeline_from_directory,
-    should_discard_left,
-)
+from huggingface_inference_toolkit.utils import check_and_register_custom_pipeline_from_directory
 
 
 class HuggingFaceHandler:
@@ -60,8 +56,7 @@ class HuggingFaceHandler:
         pred = self._timed_call(data)
         duration = perf_counter() - start
         logger.info("Inference duration: %.2f ms", duration * 1000)
-        if pred is not None:
-            latency_guard.record(duration)
+        latency_guard.record(duration)
         return pred
 
     def _timed_call(self, data: Dict[str, Any]):
@@ -72,17 +67,7 @@ class HuggingFaceHandler:
         inputs = data.pop("inputs", data)
         parameters = data.pop("parameters", {})
 
-        if "handler_params" in data:
-            handler_params = data.pop("handler_params")
-            if should_discard_left():
-                request = handler_params.get("request")
-                if not request:
-                    logger.warning("Cannot know if request caller already left, missing request handler param")
-                elif already_left(request):
-                    logger.info("Discarding request as the caller already left")
-                    return None
-
-    # diffusers and sentence transformers pipelines do not have the `task` arg
+        # diffusers and sentence transformers pipelines do not have the `task` arg
         if not hasattr(self.pipeline, "task"):
             # sentence transformers parameters not supported yet
             if any(isinstance(self.pipeline, v) for v in SENTENCE_TRANSFORMERS_TASKS.values()):
